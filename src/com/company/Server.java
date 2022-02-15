@@ -58,6 +58,30 @@ public class Server {
         out.flush();
     }
 
+    public void handleClientClose(Socket socketClient) throws IOException {
+        for (Client client : clients) {
+            if (client.getId() == socketClient) {
+                waitingClients.remove(client);
+                if (client.getGames().size() > 0) {
+                    Game game = client.getLastGame();
+                    if (!game.getIsFinished()) {
+                        game.finish();
+                        if (game.getPlayer1() == client) {
+                            game.setWinner(game.getPlayer2());
+                            sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
+                        }
+                        else {
+                            game.setWinner(game.getPlayer1());
+                            sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
+                        }
+                    }
+                }
+                clients.remove(client);
+                break;
+            }
+        }
+    }
+
     public void handleInputStream(Socket socketClient, String stream) throws IOException, InterruptedException {
         if (stream.startsWith("setName:")) {
             for (Client client : clients) {
@@ -127,14 +151,15 @@ public class Server {
         if (stream.startsWith("endGame:")) {
             for (Client client : clients) {
                 if (client.getId() == socketClient) {
-                    Game game = client.getGames().remove(client.getGames().size() - 1);
+                    Game game = client.getLastGame();
                     game.finish();
+                    sendResponse(socketClient, "endGame:OK,giveUp");
                     if (client == game.getPlayer1()) {
                         game.setWinner(game.getPlayer2());
-                        sendResponse(socketClient, "endGame:OK,loser");
+                        sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
                     } else {
                         game.setWinner(game.getPlayer1());
-                        sendResponse(socketClient, "endGame:OK,winner");
+                        sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
                     }
                 }
             }
@@ -252,6 +277,45 @@ public class Server {
                     }
                     System.out.println("Saindo 2");
                     gameSemaphore.release();
+                }
+            }
+        }
+
+        if (stream.startsWith("drawGame:")) {
+            for (Client client : clients) {
+                if (client.getId() == socketClient) {
+                    gameSemaphore.acquire();
+                    Game game = client.getLastGame();
+                    String resp = stream.substring(9);
+                    if (game.getAwaitingForDraw() != client && (game.getAwaitingForDraw() == game.getPlayer1() && game.getAwaitingForDraw() == game.getPlayer2())) {
+                        if (resp.equals("YES")) {
+                            sendResponse(game.getPlayer2().getId(), "drawGame:OK,draw");
+                            sendResponse(game.getPlayer1().getId(), "drawGame:OK,draw");
+                        } else if (resp.equals("NO")) {
+                            sendResponse(game.getPlayer2().getId(), "drawGame:OK,refused");
+                            sendResponse(game.getPlayer1().getId(), "drawGame:OK,refused");
+                        }
+                    } else if (game.getAwaitingForDraw() == null && resp.equals("YES")) {
+                        game.askForDraw(client);
+                        sendResponse(client.getId(), "drawGame:OK,wait");
+                        if (game.getPlayer1() == client)
+                            sendResponse(game.getPlayer2().getId(), "drawGame:OK,ask");
+                        else
+                            sendResponse(game.getPlayer1().getId(), "drawGame:OK,ask");
+                    }
+                    gameSemaphore.release();
+                }
+            }
+        }
+
+        if (stream.startsWith("chatMessage:")) {
+            for (Client client : clients) {
+                if (client.getId() == socketClient) {
+                    Game game = client.getLastGame();
+                    if (game.getPlayer1() == client)
+                        sendResponse(game.getPlayer2().getId(), "chatMessage:OK," + client.getName() + "," + stream.substring(12));
+                    else
+                        sendResponse(game.getPlayer1().getId(), "chatMessage:OK," + client.getName() + "," + stream.substring(12));
                 }
             }
         }

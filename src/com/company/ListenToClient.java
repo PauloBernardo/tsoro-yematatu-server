@@ -27,6 +27,7 @@ public class ListenToClient implements Runnable {
             System.out.println("Cliente desconectado do IP " + client.getInetAddress().
                     getHostAddress());
             entrada.close();
+            root.handleClientClose(client);
             root.removeClient(client);
         } catch (Exception e){}
     }

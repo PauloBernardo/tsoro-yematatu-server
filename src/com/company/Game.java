@@ -15,14 +15,17 @@ public class Game {
     private int currentPlayer;
     private int turnNumber;
     private Client winner = null;
+    private boolean wasADraw;
     private String player1Color;
     private String player2Color;
+    private Client awaitingForDraw;
 
     public Game() {
         this.board = "0000000";
         this.isFinished = false;
         this.currentPlayer = 1;
         this.turnNumber = 0;
+        this.wasADraw = false;
     }
 
     public String getBoard() {
@@ -187,5 +190,21 @@ public class Game {
 
     public int getCurrentPlayer() {
         return this.currentPlayer;
+    }
+
+    public void askForDraw(Client player) {
+        this.awaitingForDraw = player;
+    }
+
+    public Client getAwaitingForDraw() {
+        return awaitingForDraw;
+    }
+
+    public boolean isWasADraw() {
+        return wasADraw;
+    }
+
+    public void setWasADraw(boolean wasADraw) {
+        this.wasADraw = wasADraw;
     }
 }
