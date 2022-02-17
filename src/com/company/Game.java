@@ -12,6 +12,7 @@ public class Game {
     private boolean isFinished;
     private Client player1;
     private Client player2;
+    private Client[] players;
     private int currentPlayer;
     private int turnNumber;
     private Client winner = null;
@@ -20,12 +21,15 @@ public class Game {
     private String player2Color;
     private Client awaitingForDraw;
 
-    public Game() {
+    public Game(Client player1, Client player2) {
         this.board = "0000000";
         this.isFinished = false;
         this.currentPlayer = 1;
         this.turnNumber = 0;
         this.wasADraw = false;
+        this.players = new Client[2];
+        this.players[0] = player1;
+        this.players[1] = player2;
     }
 
     public String getBoard() {
@@ -158,6 +162,10 @@ public class Game {
 
     public Client getPlayer2() {
         return player2;
+    }
+
+    public Client[] getPlayers() {
+        return players;
     }
 
     public void setPlayer1(Client player1) {

@@ -64,7 +64,8 @@ public class Server {
                 waitingClients.remove(client);
                 if (client.getGames().size() > 0) {
                     Game game = client.getLastGame();
-                    if (!game.getIsFinished()) {
+                    Client[] players = game.getPlayers();
+                    if (!game.getIsFinished() && game.getPlayer1() != null && game.getPlayer2() != null ) {
                         game.finish();
                         if (game.getPlayer1() == client) {
                             game.setWinner(game.getPlayer2());
@@ -73,6 +74,16 @@ public class Server {
                         else {
                             game.setWinner(game.getPlayer1());
                             sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
+                        }
+                    } else if (!game.getIsFinished()) {
+                        game.finish();
+                        if (players[0] == client) {
+                            game.setWinner(players[1]);
+                            sendResponse(players[1].getId(), "endGame:OK,your opponent left");
+                        }
+                        else {
+                            game.setWinner(players[0]);
+                            sendResponse(players[0].getId(), "endGame:OK,your opponent left");
                         }
                     }
                 }
@@ -112,7 +123,7 @@ public class Server {
                 if (client.getId() == socketClient) {
                     if (waitingClients.size() != 0) {
                         Client clientWaitingGame = waitingClients.remove(0);
-                        Game game = new Game();
+                        Game game = new Game(clientWaitingGame, client);
                         games.add(game);
                         clientWaitingGame.addGame(game);
                         client.addGame(game);

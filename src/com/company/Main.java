@@ -13,7 +13,7 @@ public class Main {
 
         Client player1 = new Client(new Socket());
         Client player2 = new Client(new Socket());
-        Game game = new Game();
+        Game game = new Game(player1, player2);
         player1.setName("Paulo");
         player2.setName("Jose");
         player1.addGame(game);
