@@ -250,12 +250,14 @@ public class Server {
                         if (c.getLastGame() == game && c != client) {
                             if (game.getPlayer1() == c && stream.substring(13).equals("player1")) {
                                 sendResponse(socketClient, "choosePlayer:ERROR,player2");
+                                game.setPlayer2(client);
                                 sendResponse(c.getId(), "begin:OK");
                                 sendResponse(socketClient, "begin:OK");
                                 sendResponse(c.getId(), "turn:OK,player1");
                                 sendResponse(socketClient, "turn:OK,player1");
                             } else if (game.getPlayer2() == c && stream.substring(13).equals("player2")) {
                                 sendResponse(socketClient, "choosePlayer:ERROR,player1");
+                                game.setPlayer1(client);
                                 sendResponse(c.getId(), "begin:OK");
                                 sendResponse(socketClient, "begin:OK");
                                 sendResponse(c.getId(), "turn:OK,player1");
