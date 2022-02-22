@@ -136,6 +136,7 @@ public class Server {
                 sendResponse(socketClient, "startRandomMatch:OK,wait");
             }
         }
+
         if (stream.startsWith("getChooseMatch:")) {
             DataOutputStream out = new DataOutputStream(socketClient.getOutputStream());
             StringBuilder clientIds = new StringBuilder("getChooseMatch:OK");
@@ -209,8 +210,8 @@ public class Server {
                         sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
                         sendResponse(game.getPlayer2().getId(), "endGame:OK,loser");
                     } else if (winner == '2') {
-                        sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
-                        sendResponse(game.getPlayer2().getId(), "endGame:OK,loser");
+                        sendResponse(game.getPlayer1().getId(), "endGame:OK,loser");
+                        sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
                     }
                 } catch (Exception e) {
                     sendResponse(socketClient, "move:ERROR," + e.getMessage());
