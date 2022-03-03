@@ -1,7 +1,5 @@
 package com.company;
 
-import java.awt.*;
-
 public class Game {
     private String board;
     /*
@@ -12,13 +10,11 @@ public class Game {
     private boolean isFinished;
     private Client player1;
     private Client player2;
-    private Client[] players;
+    private final Client[] players;
     private int currentPlayer;
     private int turnNumber;
     private Client winner = null;
     private boolean wasADraw;
-    private String player1Color;
-    private String player2Color;
     private Client awaitingForDraw;
 
     public Game(Client player1, Client player2) {
@@ -40,8 +36,8 @@ public class Game {
         this.isFinished = true;
     }
 
-    public boolean getIsFinished() {
-        return this.isFinished;
+    public boolean isFinished() {
+        return !this.isFinished;
     }
 
     private boolean isNumbersInCorrectRange(int older, int newer) {
@@ -178,22 +174,6 @@ public class Game {
 
     public void setWinner(Client winner) {
         this.winner = winner;
-    }
-
-    public void setPlayer1Color(String color) {
-        player1Color = color;
-    }
-
-    public void setPlayer2Color(String color) {
-        player2Color = color;
-    }
-
-    public String getPlayer1Color() {
-        return player1Color;
-    }
-
-    public String getPlayer2Color() {
-        return player2Color;
     }
 
     public int getCurrentPlayer() {

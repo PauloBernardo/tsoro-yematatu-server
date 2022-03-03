@@ -7,7 +7,7 @@ public class Client {
     private final Socket id;
     private final Long timeId;
     private String name;
-    private ArrayList<Game> games;
+    private final ArrayList<Game> games;
     private String currentColor;
 
     public Client(Socket id) {
@@ -37,12 +37,9 @@ public class Client {
         return games;
     }
 
-    public void setGames(ArrayList<Game> games) {
-        this.games = games;
-    }
-
     public Game getLastGame() {
-        return games.get(games.size()-1);
+        if (games.size() > 0) return games.get(games.size()-1);
+        return null;
     }
 
     public void addGame(Game game) {
