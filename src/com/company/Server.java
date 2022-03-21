@@ -4,12 +4,10 @@ import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
-import java.rmi.server.ServerNotActiveException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
-import java.rmi.server.RemoteServer;
 
 public class Server extends UnicastRemoteObject implements TsoroYematatuServerInterface {
     private final ArrayList<Client> clients;
@@ -23,10 +21,10 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         gameSemaphore = new Semaphore(1, true);
     }
 
-    private Client getClientFromRemote() throws Exception {
+    private Client getClientFromRemote(String id) throws Exception {
         Client c = null;
         for (Client client : clients) {
-            if (Objects.equals(client.getId(), RemoteServer.getClientHost())) {
+            if (Objects.equals(client.getId(), id)) {
                 c = client;
                 break;
             }
@@ -36,15 +34,15 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean registry(String path) throws MalformedURLException, NotBoundException, RemoteException, ServerNotActiveException {
+    public boolean registry(String id, String path) throws MalformedURLException, NotBoundException, RemoteException {
         TsoroYematatuClient client = (TsoroYematatuClient) Naming.lookup(path);
-        clients.add(new Client(RemoteServer.getClientHost(), client));
+        clients.add(new Client(id, client));
         return false;
     }
 
     @Override
-    public boolean unregister() throws Exception {
-        Client client = getClientFromRemote();
+    public boolean unregister(String id) throws Exception {
+        Client client = getClientFromRemote(id);
         waitingClients.remove(client);
 
         Game game = client.getLastGame();
@@ -77,9 +75,9 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public String setName(String name) throws Exception {
+    public String setName(String id, String name) throws Exception {
         System.out.println("Setting name: " + name);
-        Client client = this.getClientFromRemote();
+        Client client = this.getClientFromRemote(id);
         client.setName(name);
 
         System.out.println(client);
@@ -87,22 +85,22 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public String getName() throws Exception {
-        Client client = this.getClientFromRemote();
+    public String getName(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
 
         return client.getName();
     }
 
     @Override
-    public boolean startNewMatch() throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean startNewMatch(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
         waitingClients.add(client);
         return true;
     }
 
     @Override
-    public String startRandomMatch() throws Exception {
-        Client client = this.getClientFromRemote();
+    public String startRandomMatch(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
         if (waitingClients.size() != 0) {
             Client clientWaitingGame = waitingClients.remove(0);
             Game game = new Game(clientWaitingGame, client);
@@ -117,8 +115,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean startChooseMatch(String chooseId) throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean startChooseMatch(String id, String chooseId) throws Exception {
+        Client client = this.getClientFromRemote(id);
         for(Client waitingClient: waitingClients) {
             if (waitingClient.getId().equals(chooseId)) {
                 Game game = new Game(waitingClient, client);
@@ -133,7 +131,7 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public ArrayList<GameDescription> getChooseMatch() {
+    public ArrayList<GameDescription> getChooseMatch(String id) {
         ArrayList<GameDescription> games = new ArrayList<>();
         for (Client waitingClient : waitingClients) {
             games.add(new GameDescription("", "", waitingClient.getName(), waitingClient.getId()));
@@ -142,8 +140,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public ArrayList<GameDescription> getHistory() throws Exception {
-        Client client = this.getClientFromRemote();
+    public ArrayList<GameDescription> getHistory(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
         ArrayList<GameDescription> games = new ArrayList<>();
         int gameNumber = 1;
         for (Game game : client.getGames()) {
@@ -160,8 +158,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean cancelGame() throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean cancelGame(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
         Game game = client.getLastGame();
         waitingClients.remove(client);
         if (game != null && game.isFinished()) {
@@ -180,8 +178,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean endGame() throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean endGame(String id) throws Exception {
+        Client client = this.getClientFromRemote(id);
         Game game = client.getLastGame();
         game.finish();
         if (client == game.getPlayer1()) {
@@ -195,8 +193,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean chooseColor(String color) throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean chooseColor(String id, String color) throws Exception {
+        Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
         Game game = client.getLastGame();
@@ -216,8 +214,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean move(int older, int newer) throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean move(String id, int older, int newer) throws Exception {
+        Client client = this.getClientFromRemote(id);
         Game game = client.getLastGame();
         if (game == null) return false;
         if (
@@ -252,8 +250,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean choosePlayer(String player) throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean choosePlayer(String id, String player) throws Exception {
+        Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
         Game game = client.getLastGame();
@@ -296,8 +294,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public boolean drawGame(String response) throws Exception {
-        Client client = this.getClientFromRemote();
+    public boolean drawGame(String id, String response) throws Exception {
+        Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
         Game game = client.getLastGame();
@@ -330,8 +328,8 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
     }
 
     @Override
-    public String chatMessage(String message) throws Exception {
-        Client client = this.getClientFromRemote();
+    public String chatMessage(String id, String message) throws Exception {
+        Client client = this.getClientFromRemote(id);
         Game game = client.getLastGame();
         if (game == null) return null;
 

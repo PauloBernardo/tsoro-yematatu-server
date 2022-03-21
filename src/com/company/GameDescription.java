@@ -1,6 +1,8 @@
 package com.company;
 
-public class GameDescription {
+import java.io.Serializable;
+
+public class GameDescription implements Serializable {
     private String game;
     private String result;
     private String player;
