@@ -1,345 +1,345 @@
 package com.company;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.MalformedURLException;
+import java.rmi.Naming;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
+import java.rmi.server.ServerNotActiveException;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.concurrent.Semaphore;
+import java.rmi.server.RemoteServer;
 
-public class Server {
+public class Server extends UnicastRemoteObject implements TsoroYematatuServerInterface {
     private final ArrayList<Client> clients;
     private final ArrayList<Client> waitingClients;
     private final Semaphore gameSemaphore;
 
-    public Server() {
+    public Server() throws RemoteException {
+        super();
         clients = new ArrayList<>();
         waitingClients = new ArrayList<>();
         gameSemaphore = new Semaphore(1, true);
     }
 
-    public void start(int serverPort) {
-        try {
-            ServerSocket server = new ServerSocket(serverPort);
-            System.out.println("Server started on port " + serverPort);
-
-            while (true) {
-                Socket client = server.accept();
-                clients.add(new Client(client));
-                new Thread(new ListenToClient(client, this)).start();
+    private Client getClientFromRemote() throws Exception {
+        Client c = null;
+        for (Client client : clients) {
+            if (Objects.equals(client.getId(), RemoteServer.getClientHost())) {
+                c = client;
+                break;
             }
-        } catch (IOException e) {
-            System.out.println(e.getMessage());
         }
+        if (c == null) throw new Exception("Client not found!");
+        return c;
     }
 
-    private void sendResponse(Socket client, String message) throws IOException {
-        DataOutputStream out = new DataOutputStream(client.getOutputStream());
-        out.writeUTF(message);
-        out.flush();
+    @Override
+    public boolean registry(String path) throws MalformedURLException, NotBoundException, RemoteException, ServerNotActiveException {
+        TsoroYematatuClient client = (TsoroYematatuClient) Naming.lookup(path);
+        clients.add(new Client(RemoteServer.getClientHost(), client));
+        return false;
     }
 
-    public void handleClientClose(Socket socketClient) throws IOException {
-        Client client = getClientFromSocket(socketClient);
+    @Override
+    public boolean unregister() throws Exception {
+        Client client = getClientFromRemote();
         waitingClients.remove(client);
 
         Game game = client.getLastGame();
-        if (game == null) return;
+        if (game == null) return true;
 
         Client[] players = game.getPlayers();
         if (game.isFinished() && game.getPlayer1() != null && game.getPlayer2() != null ) {
             game.finish();
             if (game.getPlayer1() == client) {
                 game.setWinner(game.getPlayer2());
-                sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
+                game.getPlayer2().getClientRemote().endGame("winner");
             }
             else {
                 game.setWinner(game.getPlayer1());
-                sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
+                game.getPlayer1().getClientRemote().endGame("winner");
             }
         } else if (game.isFinished()) {
             game.finish();
             if (players[0] == client) {
                 game.setWinner(players[1]);
-                sendResponse(players[1].getId(), "endGame:OK,your opponent left");
+                players[1].getClientRemote().endGame("your opponent left");
             }
             else {
                 game.setWinner(players[0]);
-                sendResponse(players[0].getId(), "endGame:OK,your opponent left");
+                players[0].getClientRemote().endGame("your opponent left");
             }
         }
         clients.remove(client);
+        return false;
     }
 
-    private Client getClientFromSocket(Socket socketClient) {
-        Client c = null;
-        for (Client client : clients) {
-            if (client.getId() == socketClient) {
-                c = client;
-                break;
-            }
-        }
-        return c;
+    @Override
+    public String setName(String name) throws Exception {
+        System.out.println("Setting name: " + name);
+        Client client = this.getClientFromRemote();
+        client.setName(name);
+
+        System.out.println(client);
+        return name;
     }
 
-    public void handleInputStream(Socket socketClient, String stream) throws IOException, InterruptedException {
-        Client client = this.getClientFromSocket(socketClient);
-        if (client == null) return;
+    @Override
+    public String getName() throws Exception {
+        Client client = this.getClientFromRemote();
 
-        if (stream.startsWith("setName:")) {
-            client.setName(stream.substring(8));
-            sendResponse(socketClient, "setName:OK");
-        }
+        return client.getName();
+    }
 
-        if (stream.startsWith("getName:")) {
-            sendResponse(socketClient, "getName:OK," + client.getName());
-        }
+    @Override
+    public boolean startNewMatch() throws Exception {
+        Client client = this.getClientFromRemote();
+        waitingClients.add(client);
+        return true;
+    }
 
-        if (stream.startsWith("startNewMatch:")) {
+    @Override
+    public String startRandomMatch() throws Exception {
+        Client client = this.getClientFromRemote();
+        if (waitingClients.size() != 0) {
+            Client clientWaitingGame = waitingClients.remove(0);
+            Game game = new Game(clientWaitingGame, client);
+            clientWaitingGame.addGame(game);
+            client.addGame(game);
+            clientWaitingGame.getClientRemote().startRandomMatch();
+            return "start";
+        } else {
             waitingClients.add(client);
-            sendResponse(socketClient, "startNewMatch:OK");
+            return "wait";
         }
+    }
 
-        if (stream.startsWith("startRandomMatch:")) {
-            if (waitingClients.size() != 0) {
-                Client clientWaitingGame = waitingClients.remove(0);
-                Game game = new Game(clientWaitingGame, client);
-                clientWaitingGame.addGame(game);
+    @Override
+    public boolean startChooseMatch(String chooseId) throws Exception {
+        Client client = this.getClientFromRemote();
+        for(Client waitingClient: waitingClients) {
+            if (waitingClient.getId().equals(chooseId)) {
+                Game game = new Game(waitingClient, client);
+                waitingClient.addGame(game);
                 client.addGame(game);
-                sendResponse(clientWaitingGame.getId(), "startRandomMatch:OK,start");
-                sendResponse(socketClient, "startRandomMatch:OK,start");
+                waitingClients.remove(waitingClient);
+                waitingClient.getClientRemote().startChooseMatch();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public ArrayList<GameDescription> getChooseMatch() {
+        ArrayList<GameDescription> games = new ArrayList<>();
+        for (Client waitingClient : waitingClients) {
+            games.add(new GameDescription("", "", waitingClient.getName(), waitingClient.getId()));
+        }
+        return games;
+    }
+
+    @Override
+    public ArrayList<GameDescription> getHistory() throws Exception {
+        Client client = this.getClientFromRemote();
+        ArrayList<GameDescription> games = new ArrayList<>();
+        int gameNumber = 1;
+        for (Game game : client.getGames()) {
+            if (game.getWinner() == client) {
+                games.add(new GameDescription("Game ------> " + gameNumber,"Winner", "", ""));
+            } else if (game.isWasADraw()) {
+                games.add(new GameDescription("Game ------> " + gameNumber,"Draw", "", ""));
             } else {
-                waitingClients.add(client);
-                sendResponse(socketClient, "startRandomMatch:OK,wait");
+                games.add(new GameDescription("Game ------> " + gameNumber,"Loser", "", ""));
             }
+            gameNumber++;
         }
+        return games;
+    }
 
-        if (stream.startsWith("startChooseMatch:")) {
-            for(Client waitingClient: waitingClients) {
-                String waitingClientId = waitingClient.getName() + "#" + waitingClient.getTimeId();
-                String chooseId = stream.substring(17);
-
-                if (waitingClientId.equals(chooseId)) {
-                    Game game = new Game(waitingClient, client);
-                    waitingClient.addGame(game);
-                    client.addGame(game);
-                    waitingClients.remove(waitingClient);
-                    sendResponse(waitingClient.getId(), "startChooseMatch:OK,start");
-                    sendResponse(socketClient, "startChooseMatch:OK,start");
-                    return;
-                }
-            }
-            sendResponse(socketClient, "startChooseMatch:ERROR");
-        }
-
-        if (stream.startsWith("getChooseMatch:")) {
-            DataOutputStream out = new DataOutputStream(socketClient.getOutputStream());
-            StringBuilder clientIds = new StringBuilder("getChooseMatch:OK");
-            for (Client waitingClient : waitingClients) {
-                clientIds.append(",").append(waitingClient.getName()).append("#").append(waitingClient.getTimeId());
-            }
-            out.writeUTF(clientIds.toString());
-            out.flush();
-        }
-
-        if (stream.startsWith("getHistory:")) {
-            DataOutputStream out = new DataOutputStream(socketClient.getOutputStream());
-            StringBuilder clientIds = new StringBuilder("getHistory:OK");
-            int gameNumber = 1;
-            for (Game game : client.getGames()) {
-                clientIds.append(",").append("Game: ").append(gameNumber).append(" -----> ");
-                if (game.getWinner() == client) {
-                    clientIds.append("Winner");
-                } else if (game.isWasADraw()) {
-                    clientIds.append("Draw");
-                } else {
-                    clientIds.append("Loser");
-                }
-                gameNumber++;
-            }
-            out.writeUTF(clientIds.toString());
-            out.flush();
-        }
-
-        if (stream.startsWith("cancelGame:")) {
-            Game game = client.getLastGame();
-            waitingClients.remove(client);
-            sendResponse(socketClient, "cancelGame:OK");
-            if (game != null && game.isFinished()) {
-                Client[] players = game.getPlayers();
-                game.finish();
-                if (players[0] == client) {
-                    game.setWinner(players[1]);
-                    sendResponse(players[1].getId(), "endGame:OK,your opponent left");
-                }
-                else {
-                    game.setWinner(players[0]);
-                    sendResponse(players[0].getId(), "endGame:OK,your opponent left");
-                }
-            }
-        }
-
-        if (stream.startsWith("endGame:")) {
-            Game game = client.getLastGame();
+    @Override
+    public boolean cancelGame() throws Exception {
+        Client client = this.getClientFromRemote();
+        Game game = client.getLastGame();
+        waitingClients.remove(client);
+        if (game != null && game.isFinished()) {
+            Client[] players = game.getPlayers();
             game.finish();
-            sendResponse(socketClient, "endGame:OK,giveUp");
-            if (client == game.getPlayer1()) {
-                game.setWinner(game.getPlayer2());
-                sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
-            } else {
-                game.setWinner(game.getPlayer1());
-                sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
+            if (players[0] == client) {
+                game.setWinner(players[1]);
+                players[1].getClientRemote().endGame("your opponent left");
+            }
+            else {
+                game.setWinner(players[0]);
+                players[0].getClientRemote().endGame("your opponent left");
             }
         }
+        return true;
+    }
 
-        if (stream.startsWith("chooseColor:")) {
-            gameSemaphore.acquire();
+    @Override
+    public boolean endGame() throws Exception {
+        Client client = this.getClientFromRemote();
+        Game game = client.getLastGame();
+        game.finish();
+        if (client == game.getPlayer1()) {
+            game.setWinner(game.getPlayer2());
+            game.getPlayer2().getClientRemote().endGame("winner");
+        } else {
+            game.setWinner(game.getPlayer1());
+            game.getPlayer1().getClientRemote().endGame("winner");
+        }
+        return true;
+    }
 
-            Game game = client.getLastGame();
-            for (Client c : clients) {
-                if (c.getLastGame() == game && c != client) {
-                    if (c.getColor().equals(stream.substring(12))) {
-                        sendResponse(socketClient, "chooseColor:ERROR");
-                    } else {
-                        client.setColor(stream.substring(12));
-                        sendResponse(socketClient, "chooseColor:OK,yourself," + stream.substring(12));
-                        sendResponse(c.getId(), "chooseColor:OK,another," + stream.substring(12));
-                    }
+    @Override
+    public boolean chooseColor(String color) throws Exception {
+        Client client = this.getClientFromRemote();
+        gameSemaphore.acquire();
+
+        Game game = client.getLastGame();
+        for (Client c : clients) {
+            if (c.getLastGame() == game && c != client) {
+                if (c.getColor().equals(color)) {
+                    throw new Exception("chooseColor:ERROR");
+                } else {
+                    client.setColor(color);
+                    c.getClientRemote().chooseColor(color);
                 }
             }
-
-            gameSemaphore.release();
         }
 
-        if (stream.startsWith("move:")) {
-            Game game = client.getLastGame();
-            if (game == null) return;
-            int older = Integer.parseInt(stream.split(":")[1].split(",")[0]);
-            int newer = Integer.parseInt(stream.split(":")[1].split(",")[1]);
-            if (
-                    (client == game.getPlayer1() && game.getCurrentPlayer() == 1)
-                            || (client == game.getPlayer2() && game.getCurrentPlayer() == 2)
-            ) {
-                try {
-                    game.playerMove(older, newer);
-                    if (client == game.getPlayer1()) {
-                        sendResponse(socketClient, "move:OK,player1," + stream.substring(5));
-                        sendResponse(game.getPlayer2().getId(), "move:OK,player1," + stream.substring(5));
-                        sendResponse(socketClient, "turn:OK,player2");
-                        sendResponse(game.getPlayer2().getId(), "turn:OK,player2");
-                    } else {
-                        sendResponse(socketClient, "move:OK,player2," + stream.substring(5));
-                        sendResponse(game.getPlayer1().getId(), "move:OK,player2," + stream.substring(5));
-                        sendResponse(socketClient, "turn:OK,player1");
-                        sendResponse(game.getPlayer1().getId(), "turn:OK,player1");
-                    }
-                    char winner = game.checkIfHasAWinner();
-                    if (winner == '1') {
-                        sendResponse(game.getPlayer1().getId(), "endGame:OK,winner");
-                        sendResponse(game.getPlayer2().getId(), "endGame:OK,loser");
-                    } else if (winner == '2') {
-                        sendResponse(game.getPlayer1().getId(), "endGame:OK,loser");
-                        sendResponse(game.getPlayer2().getId(), "endGame:OK,winner");
-                    }
-                } catch (Exception e) {
-                    sendResponse(socketClient, "move:ERROR," + e.getMessage());
+        gameSemaphore.release();
+        return true;
+    }
+
+    @Override
+    public boolean move(int older, int newer) throws Exception {
+        Client client = this.getClientFromRemote();
+        Game game = client.getLastGame();
+        if (game == null) return false;
+        if (
+                (client == game.getPlayer1() && game.getCurrentPlayer() == 1)
+                        ||
+                (client == game.getPlayer2() && game.getCurrentPlayer() == 2)
+        ) {
+            try {
+                game.playerMove(older, newer);
+                if (client == game.getPlayer1()) {
+                    game.getPlayer2().getClientRemote().move(older, newer);
+                    game.getPlayer2().getClientRemote().turn();
+                } else {
+                    game.getPlayer1().getClientRemote().move(older, newer);
+                    game.getPlayer1().getClientRemote().turn();
                 }
-            } else {
-                sendResponse(socketClient, "move:ERROR,invalidPlayer");
+                char winner = game.checkIfHasAWinner();
+                if (winner == '1') {
+                    game.getPlayer1().getClientRemote().endGame("winner");
+                    game.getPlayer2().getClientRemote().endGame("loser");
+                } else if (winner == '2') {
+                    game.getPlayer1().getClientRemote().endGame("loser");
+                    game.getPlayer2().getClientRemote().endGame("winner");
+                }
+            } catch (Exception e) {
+                throw new Exception("move:ERROR," + e.getMessage());
             }
+        } else {
+            throw new Exception("move:ERROR,invalidPlayer");
         }
+        return true;
+    }
 
-        if (stream.startsWith("choosePlayer:")) {
-            gameSemaphore.acquire();
+    @Override
+    public boolean choosePlayer(String player) throws Exception {
+        Client client = this.getClientFromRemote();
+        gameSemaphore.acquire();
 
-            Game game = client.getLastGame();
-            if (game == null) return;
-            for (Client c : clients) {
-                if (c.getLastGame() == game && c != client) {
-                    if (game.getPlayer1() == c && stream.substring(13).equals("player1")) {
-                        sendResponse(socketClient, "choosePlayer:ERROR,player2");
-                        game.setPlayer2(client);
-                        sendResponse(c.getId(), "begin:OK");
-                        sendResponse(socketClient, "begin:OK");
-                        sendResponse(c.getId(), "turn:OK,player1");
-                        sendResponse(socketClient, "turn:OK,player1");
-                    } else if (game.getPlayer2() == c && stream.substring(13).equals("player2")) {
-                        sendResponse(socketClient, "choosePlayer:ERROR,player1");
+        Game game = client.getLastGame();
+        if (game == null) return false;
+        for (Client c : clients) {
+            if (c.getLastGame() == game && c != client) {
+                if (game.getPlayer1() == c && player.equals("player1")) {
+                    game.setPlayer2(client);
+                    c.getClientRemote().begin("player1");
+                    client.getClientRemote().begin("player1");
+                    return false;
+                } else if (game.getPlayer2() == c && player.equals("player2")) {
+                    game.setPlayer1(client);
+                    c.getClientRemote().begin("player1");
+                    client.getClientRemote().begin("player1");
+                    return false;
+                } else if (game.getPlayer1() != c && game.getPlayer2() != c) {
+                    if (player.equals("player1")) {
                         game.setPlayer1(client);
-                        sendResponse(c.getId(), "begin:OK");
-                        sendResponse(socketClient, "begin:OK");
-                        sendResponse(c.getId(), "turn:OK,player1");
-                        sendResponse(socketClient, "turn:OK,player1");
-                    } else if (game.getPlayer1() != c && game.getPlayer2() != c) {
-                        if (stream.substring(13).equals("player1")) {
-                            game.setPlayer1(client);
-                            sendResponse(socketClient, "choosePlayer:OK,player1");
-                        } else {
-                            game.setPlayer2(client);
-                            sendResponse(socketClient, "choosePlayer:OK,player2");
-                        }
                     } else {
-                        System.out.println(game.getPlayer1());
-                        System.out.println(game.getPlayer2());
-                        System.out.println(c);
-                        if (stream.substring(13).equals("player1")) {
-                            game.setPlayer1(client);
-                            sendResponse(socketClient, "choosePlayer:OK,player1");
-                        } else {
-                            game.setPlayer2(client);
-                            sendResponse(socketClient, "choosePlayer:OK,player2");
-                        }
-                        sendResponse(c.getId(), "begin:OK");
-                        sendResponse(socketClient, "begin:OK");
-                        sendResponse(c.getId(), "turn:OK,player1");
-                        sendResponse(socketClient, "turn:OK,player1");
+                        game.setPlayer2(client);
                     }
+                } else {
+                    System.out.println(game.getPlayer1());
+                    System.out.println(game.getPlayer2());
+                    System.out.println(c);
+                    if (player.equals("player1")) {
+                        game.setPlayer1(client);
+                    } else {
+                        game.setPlayer2(client);
+                    }
+                    c.getClientRemote().begin("player1");
+                    client.getClientRemote().begin("player1");
                 }
             }
-
-            gameSemaphore.release();
         }
 
-        if (stream.startsWith("drawGame:")) {
-            gameSemaphore.acquire();
+        gameSemaphore.release();
+        return true;
+    }
 
-            Game game = client.getLastGame();
-            if (game == null) return;
-            String resp = stream.substring(9);
-            if (game.getAwaitingForDraw() != client && (game.getAwaitingForDraw() == game.getPlayer1() || game.getAwaitingForDraw() == game.getPlayer2())) {
-                if (resp.equals("YES")) {
-                    game.setWasADraw(true);
-                    game.finish();
-                    sendResponse(game.getPlayer2().getId(), "drawGame:OK,draw");
-                    sendResponse(game.getPlayer1().getId(), "drawGame:OK,draw");
-                } else if (resp.equals("NO")) {
-                    game.askForDraw(null);
-                    if (game.getPlayer1() == client) {
-                        sendResponse(game.getPlayer2().getId(), "drawGame:OK,refused");
-                    } else {
-                        sendResponse(game.getPlayer1().getId(), "drawGame:OK,refused");
-                    }
+    @Override
+    public boolean drawGame(String response) throws Exception {
+        Client client = this.getClientFromRemote();
+        gameSemaphore.acquire();
+
+        Game game = client.getLastGame();
+        if (game == null) return false;
+        if (game.getAwaitingForDraw() != client && (game.getAwaitingForDraw() == game.getPlayer1() || game.getAwaitingForDraw() == game.getPlayer2())) {
+            if (response.equals("YES")) {
+                game.setWasADraw(true);
+                game.finish();
+                game.getPlayer2().getClientRemote().drawGame("draw");
+                game.getPlayer1().getClientRemote().drawGame("draw");
+            } else if (response.equals("NO")) {
+                game.askForDraw(null);
+                if (game.getPlayer1() == client) {
+                    game.getPlayer2().getClientRemote().drawGame("refused");
+                } else {
+                    game.getPlayer1().getClientRemote().drawGame("refused");
                 }
-            } else if (game.getAwaitingForDraw() == null && resp.equals("YES")) {
-                game.askForDraw(client);
-                sendResponse(client.getId(), "drawGame:OK,wait");
-                if (game.getPlayer1() == client)
-                    sendResponse(game.getPlayer2().getId(), "drawGame:OK,ask");
-                else
-                    sendResponse(game.getPlayer1().getId(), "drawGame:OK,ask");
             }
-
-            gameSemaphore.release();
-        }
-
-        if (stream.startsWith("chatMessage:")) {
-            Game game = client.getLastGame();
-            if (game == null) return;
-
+        } else if (game.getAwaitingForDraw() == null && response.equals("YES")) {
+            game.askForDraw(client);
+            client.getClientRemote().drawGame("wait");
             if (game.getPlayer1() == client)
-                sendResponse(game.getPlayer2().getId(), "chatMessage:OK," + client.getName() + "," + stream.substring(12));
+                game.getPlayer2().getClientRemote().drawGame("ask");
             else
-                sendResponse(game.getPlayer1().getId(), "chatMessage:OK," + client.getName() + "," + stream.substring(12));
+                game.getPlayer1().getClientRemote().drawGame("ask");
         }
+
+        gameSemaphore.release();
+        return false;
+    }
+
+    @Override
+    public String chatMessage(String message) throws Exception {
+        Client client = this.getClientFromRemote();
+        Game game = client.getLastGame();
+        if (game == null) return null;
+
+        if (game.getPlayer1() == client)
+            game.getPlayer2().getClientRemote().chatMessage(client.getName(), message);
+        else
+            game.getPlayer1().getClientRemote().chatMessage(client.getName(), message);
+
+        return null;
     }
 }

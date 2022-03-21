@@ -1,23 +1,28 @@
 package com.company;
 
-import java.net.Socket;
 import java.util.ArrayList;
 
 public class Client {
-    private final Socket id;
+    private final TsoroYematatuClient clientRemote;
+    private final String id;
     private final Long timeId;
     private String name;
     private final ArrayList<Game> games;
     private String currentColor;
 
-    public Client(Socket id) {
+    public Client(String id,TsoroYematatuClient clientRemote) {
         this.id = id;
+        this.clientRemote = clientRemote;
         this.games = new ArrayList<>();
         this.timeId = System.currentTimeMillis();
         this.currentColor = "";
     }
 
-    public Socket getId() {
+    public TsoroYematatuClient getClientRemote() {
+        return clientRemote;
+    }
+
+    public String getId() {
         return id;
     }
 

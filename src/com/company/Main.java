@@ -1,9 +1,15 @@
 package com.company;
+import java.rmi.Naming;
 
 public class Main {
 
     public static void main(String[] args) {
-        int serverPort = args.length > 0 ? Integer.parseInt(args[0]) : 3322;
-        new Server().start(serverPort);
+        try {
+            Server server = new Server();
+            Naming.rebind("tsoro-yematatu-server", server);
+            System.out.println("Server started");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
