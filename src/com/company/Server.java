@@ -261,12 +261,14 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
                 if (game.getPlayer1() == c && player.equals("player1")) {
                     game.setPlayer2(client);
                     c.getClientRemote().begin("player1");
-                    client.getClientRemote().begin("player1");
+                    client.getClientRemote().begin("player2");
+                    gameSemaphore.release();
                     return false;
                 } else if (game.getPlayer2() == c && player.equals("player2")) {
                     game.setPlayer1(client);
-                    c.getClientRemote().begin("player1");
+                    c.getClientRemote().begin("player2");
                     client.getClientRemote().begin("player1");
+                    gameSemaphore.release();
                     return false;
                 } else if (game.getPlayer1() != c && game.getPlayer2() != c) {
                     if (player.equals("player1")) {
@@ -280,11 +282,13 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
                     System.out.println(c);
                     if (player.equals("player1")) {
                         game.setPlayer1(client);
+                        c.getClientRemote().begin("player2");
+                        client.getClientRemote().begin("player1");
                     } else {
                         game.setPlayer2(client);
+                        c.getClientRemote().begin("player1");
+                        client.getClientRemote().begin("player2");
                     }
-                    c.getClientRemote().begin("player1");
-                    client.getClientRemote().begin("player1");
                 }
             }
         }
