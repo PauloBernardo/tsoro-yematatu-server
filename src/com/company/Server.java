@@ -146,11 +146,11 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         int gameNumber = 1;
         for (Game game : client.getGames()) {
             if (game.getWinner() == client) {
-                games.add(new GameDescription("Game ------> " + gameNumber,"Winner", "", ""));
+                games.add(new GameDescription("" + gameNumber,"winner", "", ""));
             } else if (game.isWasADraw()) {
-                games.add(new GameDescription("Game ------> " + gameNumber,"Draw", "", ""));
+                games.add(new GameDescription("" + gameNumber,"draw", "", ""));
             } else {
-                games.add(new GameDescription("Game ------> " + gameNumber,"Loser", "", ""));
+                games.add(new GameDescription("" + gameNumber,"loser", "", ""));
             }
             gameNumber++;
         }
@@ -197,16 +197,21 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
-        Game game = client.getLastGame();
-        for (Client c : clients) {
-            if (c.getLastGame() == game && c != client) {
-                if (c.getColor().equals(color)) {
-                    throw new Exception("chooseColor:ERROR");
-                } else {
-                    client.setColor(color);
-                    c.getClientRemote().chooseColor(color);
+        try {
+            Game game = client.getLastGame();
+            for (Client c : clients) {
+                if (c.getLastGame() == game && c != client) {
+                    if (c.getColor().equals(color)) {
+                        throw new Exception("chooseColor:ERROR");
+                    } else {
+                        client.setColor(color);
+                        c.getClientRemote().chooseColor(color);
+                    }
                 }
             }
+        } catch (Exception e) {
+            gameSemaphore.release();
+            throw e;
         }
 
         gameSemaphore.release();
@@ -254,43 +259,51 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
-        Game game = client.getLastGame();
-        if (game == null) return false;
-        for (Client c : clients) {
-            if (c.getLastGame() == game && c != client) {
-                if (game.getPlayer1() == c && player.equals("player1")) {
-                    game.setPlayer2(client);
-                    c.getClientRemote().begin("player1");
-                    client.getClientRemote().begin("player2");
-                    gameSemaphore.release();
-                    return false;
-                } else if (game.getPlayer2() == c && player.equals("player2")) {
-                    game.setPlayer1(client);
-                    c.getClientRemote().begin("player2");
-                    client.getClientRemote().begin("player1");
-                    gameSemaphore.release();
-                    return false;
-                } else if (game.getPlayer1() != c && game.getPlayer2() != c) {
-                    if (player.equals("player1")) {
-                        game.setPlayer1(client);
-                    } else {
-                        game.setPlayer2(client);
-                    }
-                } else {
-                    System.out.println(game.getPlayer1());
-                    System.out.println(game.getPlayer2());
-                    System.out.println(c);
-                    if (player.equals("player1")) {
-                        game.setPlayer1(client);
-                        c.getClientRemote().begin("player2");
-                        client.getClientRemote().begin("player1");
-                    } else {
+        try {
+            Game game = client.getLastGame();
+            if (game == null) {
+                gameSemaphore.release();
+                return false;
+            }
+            for (Client c : clients) {
+                if (c.getLastGame() == game && c != client) {
+                    if (game.getPlayer1() == c && player.equals("player1")) {
                         game.setPlayer2(client);
                         c.getClientRemote().begin("player1");
                         client.getClientRemote().begin("player2");
+                        gameSemaphore.release();
+                        return false;
+                    } else if (game.getPlayer2() == c && player.equals("player2")) {
+                        game.setPlayer1(client);
+                        c.getClientRemote().begin("player2");
+                        client.getClientRemote().begin("player1");
+                        gameSemaphore.release();
+                        return false;
+                    } else if (game.getPlayer1() != c && game.getPlayer2() != c) {
+                        if (player.equals("player1")) {
+                            game.setPlayer1(client);
+                        } else {
+                            game.setPlayer2(client);
+                        }
+                    } else {
+                        System.out.println(game.getPlayer1());
+                        System.out.println(game.getPlayer2());
+                        System.out.println(c);
+                        if (player.equals("player1")) {
+                            game.setPlayer1(client);
+                            c.getClientRemote().begin("player2");
+                            client.getClientRemote().begin("player1");
+                        } else {
+                            game.setPlayer2(client);
+                            c.getClientRemote().begin("player1");
+                            client.getClientRemote().begin("player2");
+                        }
                     }
                 }
             }
+        } catch (Exception e) {
+            gameSemaphore.release();
+            throw e;
         }
 
         gameSemaphore.release();
@@ -302,29 +315,37 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         Client client = this.getClientFromRemote(id);
         gameSemaphore.acquire();
 
-        Game game = client.getLastGame();
-        if (game == null) return false;
-        if (game.getAwaitingForDraw() != client && (game.getAwaitingForDraw() == game.getPlayer1() || game.getAwaitingForDraw() == game.getPlayer2())) {
-            if (response.equals("YES")) {
-                game.setWasADraw(true);
-                game.finish();
-                game.getPlayer2().getClientRemote().drawGame("draw");
-                game.getPlayer1().getClientRemote().drawGame("draw");
-            } else if (response.equals("NO")) {
-                game.askForDraw(null);
-                if (game.getPlayer1() == client) {
-                    game.getPlayer2().getClientRemote().drawGame("refused");
-                } else {
-                    game.getPlayer1().getClientRemote().drawGame("refused");
-                }
+        try {
+            Game game = client.getLastGame();
+            if (game == null) {
+                gameSemaphore.release();
+                return false;
             }
-        } else if (game.getAwaitingForDraw() == null && response.equals("YES")) {
-            game.askForDraw(client);
-            client.getClientRemote().drawGame("wait");
-            if (game.getPlayer1() == client)
-                game.getPlayer2().getClientRemote().drawGame("ask");
-            else
-                game.getPlayer1().getClientRemote().drawGame("ask");
+            if (game.getAwaitingForDraw() != client && (game.getAwaitingForDraw() == game.getPlayer1() || game.getAwaitingForDraw() == game.getPlayer2())) {
+                if (response.equals("YES")) {
+                    game.setWasADraw(true);
+                    game.finish();
+                    game.getPlayer2().getClientRemote().drawGame("draw");
+                    game.getPlayer1().getClientRemote().drawGame("draw");
+                } else if (response.equals("NO")) {
+                    game.askForDraw(null);
+                    if (game.getPlayer1() == client) {
+                        game.getPlayer2().getClientRemote().drawGame("refused");
+                    } else {
+                        game.getPlayer1().getClientRemote().drawGame("refused");
+                    }
+                }
+            } else if (game.getAwaitingForDraw() == null && response.equals("YES")) {
+                game.askForDraw(client);
+                client.getClientRemote().drawGame("wait");
+                if (game.getPlayer1() == client)
+                    game.getPlayer2().getClientRemote().drawGame("ask");
+                else
+                    game.getPlayer1().getClientRemote().drawGame("ask");
+            }
+        } catch (Exception e) {
+            gameSemaphore.release();
+            throw e;
         }
 
         gameSemaphore.release();
@@ -342,6 +363,6 @@ public class Server extends UnicastRemoteObject implements TsoroYematatuServerIn
         else
             game.getPlayer1().getClientRemote().chatMessage(client.getName(), message);
 
-        return null;
+        return message;
     }
 }
